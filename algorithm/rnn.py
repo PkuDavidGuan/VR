@@ -1,6 +1,7 @@
 import tensorflow as tf
 import pickle
 import random
+from time import time
 import numpy as np
 
 with tf.name_scope('input'):
@@ -68,9 +69,9 @@ def map2block(jing, wei):
     row = (int(wei+90))/30
     if row > 5:
         row = 5
-    col = (int(jing+180))/45
-    if col > 7:
-        col = 7
+    col = (int(jing+180))/30
+    if col > 11:
+        col = 11
     return row, col
 
 def score1(total, val, bar):
@@ -105,8 +106,53 @@ def score2(total, val, bar):
     
     return score*1.0/count
 
+def jing_wei_formated(jing, wei):
+    if jing < -180:
+        jing = -180
+    if jing > 180:
+        jing = 180
+    if wei < -90:
+        wei = -90
+    if wei > 90:
+        wei = 90
+    return int(jing+180), int(wei+90)
+def metric(total, val, bar, dic):
+    precision = 0
+    recall = 0
+    count = 0
+    for i in val:
+        data = total[i-1][1:]
+        pred = bar[i]
+        count += len(data)
+        for j in range(len(data)):
+            row, col = jing_wei_formated(data[j][1], data[j][2])
+            t1 = dic[row][col]
+            row, col = jing_wei_formated(pred[j][0], pred[j][1])
+            t2 = dic[row][col]
+            i1 = 0
+            i2 = 0
+            len1 = len(t1)
+            len2 = len(t2)
+            same_tile = 0
+            while True:
+                if i1 >= len1 or i2 >= len2:
+                    break
+                if t1[i1] < t2[i2]:
+                    i1 += 1
+                elif t1[i1] > t2[i2]:
+                    i2 += 1
+                else:
+                    i1 += 1
+                    i2 += 1
+                    same_tile += 1
+            precision += same_tile * 1.0 / len2
+            recall += same_tile * 1.0 / len1
+    return precision / count, recall / count, count
+
 def formated_test(experiment):
     print(experiment)
+    with open('/home/gys/VR/interest_graph.pkl', 'rb') as infile:
+        dic = pickle.load(infile)
     video_num = 9
     for video in range(0, video_num):
         total = []
@@ -120,16 +166,24 @@ def formated_test(experiment):
         random.shuffle(seq)
         a1 = 0
         a2 = 0
+        a3 = 0
+        a4 = 0
         for t in range(0, 8):
             begin = t*6
             end = (t+1)*6
+            start_t = time()
             bar = rnn(seq[begin:end], experiment, video, total)
-                
-            a1 += score1(total, seq[begin:end], bar)
-            a2 += score2(total, seq[begin:end], bar)
-        a1 = a1*1.0/8
-        a2 = a2*1.0/8/9
-        print('video:%d\tscore1:%f\tscore2:%f' %(video, a1, a2))
+            stop_t = time()
+
+            precision, recall, total_view_point = metric(total, seq[begin:end], bar, dic)
+            a1 += precision
+            a2 += recall
+            a4 += (stop_t - start_t) / total_view_point
+        a1 = a1 / 8
+        a2 = a2 / 8
+        a3 = 2 * a1 * a2 / (a1 + a2)
+        a4 = a4 / 8
+        print('%d\t%f\t%f\t%f\t%f' %(video, a1, a2, a3, a4))
 
 if __name__ == '__main__':
     formated_test(1)
